@@ -186,15 +186,16 @@ chat_input_val = st.chat_input("Ask about bookings, rental charges, late penalti
 prompt = chat_input_val or st.session_state.suggested_prompt
 
 if prompt:
-    # Reset suggested prompt so it doesn't re-trigger on next rerun
+    # Clear suggested prompt state
     st.session_state.suggested_prompt = None
 
-    # Render User Message
+    # Append user message
     st.session_state.history.append({"role": "user", "content": prompt})
+
+    # Render and generate Assistant Response
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Generate Assistant Response
     with st.chat_message("assistant"):
         with st.spinner("Checking database records and policy documents..."):
             try:
@@ -214,3 +215,6 @@ if prompt:
                 err_msg = f"⚠️ System Error: {str(e)}"
                 st.error(err_msg)
                 st.session_state.history.append({"role": "assistant", "content": err_msg})
+
+    # Instantly trigger rerun so dynamic suggestions update on a single click!
+    st.rerun()
