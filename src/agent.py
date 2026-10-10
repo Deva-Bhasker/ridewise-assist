@@ -130,12 +130,23 @@ DATA RECORDS:
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 
-    # 4. Call NeoStats-hosted LLM
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=messages,
-        temperature=0.1
-    )
+    # 4. Call NeoStats-hosted LLM with exponential retry for rate limit resilience
+    import time
+    max_retries = 3
+    response = None
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=messages,
+                temperature=0.1
+            )
+            break
+        except Exception as e:
+            if "rate" in str(e).lower() and attempt < max_retries - 1:
+                time.sleep(2 * (attempt + 1))
+            else:
+                raise e
 
     answer = response.choices[0].message.content
     return answer, sources

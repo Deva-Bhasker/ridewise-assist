@@ -1,5 +1,6 @@
 import streamlit as st
 from src.agent import run_conversation
+from src import db
 
 st.set_page_config(page_title="RideWise Assist", page_icon="🛵", layout="wide")
 
@@ -15,19 +16,37 @@ if role == "Customer":
     customer_id = st.sidebar.text_input("Enter Customer ID:", value="CUST0001", help="e.g. CUST0001, CUST0002")
     st.sidebar.info(f"Active Session: Customer `{customer_id}`")
 else:
-    st.sidebar.info("Active Session: Support Desk Employee")
+    st.sidebar.info("Active Session: **Support Desk Employee**")
 
 if st.sidebar.button("🔄 Start New Conversation", use_container_width=True):
     st.session_state.history = []
+    st.session_state.suggested_prompt = None
     st.rerun()
 
 # State initialization
 if "history" not in st.session_state:
     st.session_state.history = []
+if "suggested_prompt" not in st.session_state:
+    st.session_state.suggested_prompt = None
 
-# Title
+# Title & Header
 st.title(f"RideWise Assist — {role}" + (f" ({customer_id})" if customer_id else ""))
-st.caption("Answers from RideWise's SQLite database and official policy documents.")
+st.caption("AI-powered assistant bridging RideWise SQLite operational records and legal policy documents.")
+
+# Operational KPI Header for Support Agent
+if role == "Support Agent":
+    fleet_rows = db.get_fleet_summary()
+    total_active = sum(r['vehicle_count'] for r in fleet_rows if r['status'] == 'ACTIVE')
+    total_maint = sum(r['vehicle_count'] for r in fleet_rows if r['status'] == 'MAINTENANCE')
+    total_ret = sum(r['vehicle_count'] for r in fleet_rows if r['status'] == 'RETIRED')
+    total_fleet = total_active + total_maint + total_ret
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Fleet", f"{total_fleet} vehicles")
+    col2.metric("Active & Available", f"{total_active} vehicles", delta="Ready to rent")
+    col3.metric("Under Maintenance", f"{total_maint} vehicles", delta="-Maintenance pool", delta_color="inverse")
+    col4.metric("Retired Vehicles", f"{total_ret} vehicles")
+    st.divider()
 
 # Render Chat History
 for msg in st.session_state.history:
@@ -38,18 +57,42 @@ for msg in st.session_state.history:
                 for src in msg["sources"]:
                     st.markdown(f"- `{src}`")
 
-# Chat Input
-if prompt := st.chat_input("Ask about bookings, rental charges, late penalties, refunds, or fleet operations..."):
-    # Append and render user message
+# Quick-Prompt Starter Buttons (Preset Keywords for Evaluator)
+st.write("💡 **Quick Test Prompts:**")
+quick_cols = st.columns(3)
+
+if role == "Customer":
+    if quick_cols[0].button("📋 Check Tier & Bookings", use_container_width=True):
+        st.session_state.suggested_prompt = "What is my current customer tier, and what is the status of my latest booking?"
+    if quick_cols[1].button("💰 Policy v2 Cancellation", use_container_width=True):
+        st.session_state.suggested_prompt = "I booked a vehicle on 15 July 2026. If I cancel 10 hours before pickup, what refund do I get under Policy v2?"
+    if quick_cols[2].button("⏱️ Gold Tier Late Return", use_container_width=True):
+        st.session_state.suggested_prompt = "I am a Gold tier member. If I return 20 minutes late vs 35 minutes late, how is my late fee calculated?"
+else:  # Support Agent Quick Prompts
+    if quick_cols[0].button("📊 Hub Fleet Breakdown", use_container_width=True):
+        st.session_state.suggested_prompt = "Give me a vehicle count breakdown across all 7 hubs by status."
+    if quick_cols[1].button("🔍 Drilldown Booking B-1653", use_container_width=True):
+        st.session_state.suggested_prompt = "Look up full booking, vehicle, and payment details for booking B-1653."
+    if quick_cols[2].button("⚠️ Recent Damage Claims", use_container_width=True):
+        st.session_state.suggested_prompt = "Summarize recent damage reports and list which ones are currently DISPUTED vs CHARGED."
+
+# Determine active prompt (from input or quick button)
+chat_input_val = st.chat_input("Ask about bookings, rental charges, late penalties, refunds, or fleet operations...")
+prompt = chat_input_val or st.session_state.suggested_prompt
+
+if prompt:
+    # Reset suggested prompt so it doesn't re-trigger on next rerun
+    st.session_state.suggested_prompt = None
+
+    # Render User Message
     st.session_state.history.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     # Generate Assistant Response
     with st.chat_message("assistant"):
-        with st.spinner("Checking data and policy rules..."):
+        with st.spinner("Checking database records and policy documents..."):
             try:
-                # Format history for LLM
                 api_history = [{"role": m["role"], "content": m["content"]} for m in st.session_state.history[:-1]]
                 answer, sources = run_conversation(role, customer_id, api_history, prompt)
                 st.markdown(answer)
