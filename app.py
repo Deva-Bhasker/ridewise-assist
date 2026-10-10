@@ -33,6 +33,38 @@ if "suggested_prompt" not in st.session_state:
 st.title(f"RideWise Assist — {role}" + (f" ({customer_id})" if customer_id else ""))
 st.caption("AI-powered assistant bridging RideWise SQLite operational records and legal policy documents.")
 
+# Live Status Header Badge for Customer Role
+if role == "Customer" and customer_id:
+    profile = db.get_customer_profile(customer_id)
+    if "error" not in profile:
+        bookings = db.get_customer_bookings(customer_id)
+        latest_b = bookings[0] if bookings else None
+        
+        tier = profile.get('customer_tier', 'STANDARD')
+        kyc = profile.get('kyc_status', 'UNKNOWN')
+        name = profile.get('full_name', 'Valued Customer')
+        city = profile.get('city', 'Bengaluru')
+        
+        # Color coding badges
+        tier_color = "🟡" if tier == "GOLD" else ("⚪" if tier == "SILVER" else "🔵")
+        kyc_icon = "✅" if kyc == "VERIFIED" else ("⏳" if kyc == "PENDING" else "❌")
+        
+        latest_info = "No active bookings"
+        if latest_b:
+            b_status = latest_b.get('booking_status', 'N/A')
+            status_desc = {"UPC": "Upcoming", "ONG": "Ongoing", "CMP": "Completed", "CNL_U": "Cancelled", "CNL_S": "Cancelled by RideWise", "NSH": "No-show"}.get(b_status, b_status)
+            latest_info = f"Booking **{latest_b.get('booking_id')}** ({latest_b.get('model')}) — *{status_desc}*"
+
+        st.info(
+            f"👤 **Customer:** `{name}` ({city}) | "
+            f"{tier_color} **Tier:** `{tier}` | "
+            f"{kyc_icon} **KYC:** `{kyc}` | "
+            f"🛵 **Latest:** {latest_info}"
+        )
+    else:
+        st.warning(f"⚠️ {profile.get('error')}")
+    st.divider()
+
 # Operational KPI Header for Support Agent
 if role == "Support Agent":
     fleet_rows = db.get_fleet_summary()
