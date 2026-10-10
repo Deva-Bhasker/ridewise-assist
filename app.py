@@ -89,24 +89,97 @@ for msg in st.session_state.history:
                 for src in msg["sources"]:
                     st.markdown(f"- `{src}`")
 
-# Quick-Prompt Starter Buttons (Preset Keywords for Evaluator)
-st.write("💡 **Quick Test Prompts:**")
-quick_cols = st.columns(3)
+# Dynamic Contextual Follow-up Suggestions
+def get_contextual_suggestions(role: str, history: list) -> list:
+    """Generates follow-up query suggestions based on conversation history."""
+    if not history:
+        # Default starter pills for turn 0
+        if role == "Customer":
+            return [
+                "📋 Check my customer tier & upcoming bookings",
+                "💰 Cancellation refund under Policy v2 (15 July booking)",
+                "⏱️ Gold tier late return calculation rules"
+            ]
+        else:
+            return [
+                "📊 Hub-wise fleet breakdown by vehicle status",
+                "🔍 Drilldown into booking B-1653",
+                "⚠️ Summarize recent damage claims & disputes"
+            ]
 
-if role == "Customer":
-    if quick_cols[0].button("📋 Check Tier & Bookings", use_container_width=True):
-        st.session_state.suggested_prompt = "What is my current customer tier, and what is the status of my latest booking?"
-    if quick_cols[1].button("💰 Policy v2 Cancellation", use_container_width=True):
-        st.session_state.suggested_prompt = "I booked a vehicle on 15 July 2026. If I cancel 10 hours before pickup, what refund do I get under Policy v2?"
-    if quick_cols[2].button("⏱️ Gold Tier Late Return", use_container_width=True):
-        st.session_state.suggested_prompt = "I am a Gold tier member. If I return 20 minutes late vs 35 minutes late, how is my late fee calculated?"
-else:  # Support Agent Quick Prompts
-    if quick_cols[0].button("📊 Hub Fleet Breakdown", use_container_width=True):
-        st.session_state.suggested_prompt = "Give me a vehicle count breakdown across all 7 hubs by status."
-    if quick_cols[1].button("🔍 Drilldown Booking B-1653", use_container_width=True):
-        st.session_state.suggested_prompt = "Look up full booking, vehicle, and payment details for booking B-1653."
-    if quick_cols[2].button("⚠️ Recent Damage Claims", use_container_width=True):
-        st.session_state.suggested_prompt = "Summarize recent damage reports and list which ones are currently DISPUTED vs CHARGED."
+    # Analyze latest conversation topic
+    last_user = history[-2]["content"].lower() if len(history) >= 2 and history[-2]["role"] == "user" else ""
+    last_assistant = history[-1]["content"].lower() if history[-1]["role"] == "assistant" else ""
+    combined = f"{last_user} {last_assistant}"
+
+    if role == "Customer":
+        if "cancel" in combined or "refund" in combined:
+            return [
+                "💳 When will the refund credit to my account?",
+                "🔒 What happens to my refundable security deposit?",
+                "⏰ What if I cancel less than 2 hours before pickup?"
+            ]
+        elif "late" in combined or "delay" in combined or "tier" in combined:
+            return [
+                "🔋 What fee applies if EV battery is under 10%?",
+                "🛵 What is the hourly rate and late fee for Ather 450X?",
+                "🛡️ Does Gold tier grace period apply if I am 35 mins late?"
+            ]
+        elif "booking" in combined or "vehicle" in combined or "b-" in combined:
+            return [
+                "❌ How much refund if I cancel this booking now?",
+                "⏱️ What late fee applies if I return 1 hour late?",
+                "📍 Which hub do I need to return the vehicle to?"
+            ]
+        elif "damage" in combined or "scratch" in combined:
+            return [
+                "⚖️ How do I dispute an unfair damage claim?",
+                "🔑 How much is charged for a lost vehicle key?",
+                "💼 Will damage costs be deducted from my deposit?"
+            ]
+        else:
+            return [
+                "🛵 What are the rental charging rules per 24 hours?",
+                "🔋 Where can I charge an EV in Bengaluru?",
+                "📞 How do I contact RideWise emergency support?"
+            ]
+    else:  # Support Agent Contextual Follow-ups
+        if "damage" in combined or "claim" in combined:
+            return [
+                "⚖️ List only claims with status 'DISPUTED'",
+                "💵 What is the repair cost for high-severity damage?",
+                "📝 Look up the booking linked to the latest report"
+            ]
+        elif "hub" in combined or "fleet" in combined or "vehicle" in combined:
+            return [
+                "🔧 Which specific vehicles are in MAINTENANCE status?",
+                "📍 Show vehicle availability in Koramangala hub",
+                "⚡ How many EV scooters vs EV bikes are active?"
+            ]
+        elif "b-" in combined or "booking" in combined:
+            return [
+                "💰 Check payment status and gateway ref for this booking",
+                "🛠️ Were any damage reports filed for this booking?",
+                "⏱️ Was the vehicle returned on time or late?"
+            ]
+        else:
+            return [
+                "📊 Overview of all 7 Bengaluru hubs",
+                "⚠️ Vehicles currently under maintenance",
+                "📋 List recent completed bookings"
+            ]
+
+st.write("💡 **Suggested Next Steps:**")
+suggestions = get_contextual_suggestions(role, st.session_state.history)
+sugg_cols = st.columns(len(suggestions))
+
+for idx, sugg_text in enumerate(suggestions):
+    if sugg_cols[idx].button(sugg_text, use_container_width=True, key=f"sugg_{idx}_{len(st.session_state.history)}"):
+        # Strip leading emoji for clean prompt
+        clean_prompt = sugg_text
+        if len(sugg_text) > 2 and sugg_text[2] == " ":
+            clean_prompt = sugg_text[3:]
+        st.session_state.suggested_prompt = clean_prompt
 
 # Determine active prompt (from input or quick button)
 chat_input_val = st.chat_input("Ask about bookings, rental charges, late penalties, refunds, or fleet operations...")
