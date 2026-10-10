@@ -6,41 +6,44 @@ The system serves both **Customers** (with strict privacy and account boundaries
 
 ---
 
-## 🏛️ Architecture Overview
+## 🏛️ System Architecture
 
 ```mermaid
-flowchart TD
-    subgraph UI_Layer ["1. Presentation Layer (Streamlit Frontend)"]
-        A["User Input / Preset Pills"] --> B{"Session Role Selector"}
-        B -->|Customer| C["Customer Session (CUST0001)"]
-        B -->|Support Agent| D["Support Desk Session (Fleet-wide)"]
+flowchart LR
+    subgraph UI ["1. Streamlit UI"]
+        direction TB
+        User["User Query / Preset Pills"]
+        Role{"Role Selector"}
+        User --> Role
+        Role -->|Customer| CUST["Customer (CUST0001)"]
+        Role -->|Support| AGENT["Support Agent"]
     end
 
-    subgraph Security_Layer ["2. RBAC & Security Boundary Layer"]
-        C -->|Session customer_id| E["Hard Code-Level RBAC Filter"]
-        D -->|Staff Operational Role| F["Operational Access Controller"]
-        E -->|Block Cross-Customer PII| G["Privacy Guardrail Enforcer"]
+    subgraph Security ["2. RBAC Guardrails"]
+        direction TB
+        CUST -->|Scoped WHERE customer_id| RBAC["Privacy Filter"]
+        AGENT -->|Fleet-wide Access| OPS["Ops Controller"]
     end
 
-    subgraph Data_Layer ["3. Data & Knowledge Pipeline"]
-        E -->|WHERE customer_id = :id| H[("ridewise.db (SQLite)")]
-        F -->|Fleet Aggregation & Drilldowns| H
-        A -.->|Search Query| I["Policy Knowledge Base (RW-POL-01 to 05)"]
+    subgraph Data ["3. Dual Data Pipeline"]
+        direction TB
+        RBAC & OPS --> DB[("SQLite: ridewise.db\n(5 Tables)")]
+        User -.-> DOCS["Policy Retriever\n(RW-POL-01 to 05)"]
     end
 
-    subgraph Fusion_Engine ["4. Agent Orchestration Engine (src/agent.py)"]
-        H & I & G --> J["★ Fused Grounded Context Block"]
-        J --> K["Rate-Limit & Retry Wrapper"]
+    subgraph Core ["4. Grounded Fusion Engine"]
+        direction TB
+        DB & DOCS --> FUSION["Fused Context Block\n(Data + Policies)"]
+        FUSION --> RETRY["Retry / Rate-Limit Wrapper"]
     end
 
-    subgraph Model_Layer ["5. Model Layer (NeoStats Hosted LLM)"]
-        K -->|POST /chat/completions (Temp: 0.1)| L["NeoStats LLM: gpt-oss-120b"]
+    subgraph LLM ["5. Model & Citations"]
+        direction TB
+        RETRY --> MODEL["NeoStats Hosted LLM\n(gpt-oss-120b @ Temp 0.1)"]
+        MODEL --> ANS["Verified Answer +\n📌 Policy Citations"]
     end
 
-    subgraph Output_Layer ["6. Transparency & UI Rendering"]
-        L --> M["Streamlit Chat Stream"]
-        J -.->|Audit Citations| N["📌 Expandable Evidence & Citations Drawer"]
-    end
+    UI --> Security --> Data --> Core --> LLM
 ```
 
 ---
